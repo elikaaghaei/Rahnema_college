@@ -87,6 +87,8 @@ class LoadTester:
     def test_cache_miss(self) -> None:
         while time.time() - self.start_time < self.duration:
             try:
+                random_key = f"cache_miss_{random.randint(1000, 9999)}"
+                
                 timestamp = int(time.time())
                 random_key = f"cache_miss_{timestamp}_{random.randint(1000, 9999)}_{random.randint(1000, 9999)}"
                 requests.get(f"{self.base_url}/items/{random_key}", timeout=5)
