@@ -4,7 +4,7 @@ import time
 from flask import Flask, request, jsonify
 
 # Import prometheus client to export prometheus metrics
-from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from prometheus_client import Counter, Histogram, Gauge, generate_latest, CONTENT_TYPE_LATEST
 
 app = Flask(__name__)
 
@@ -21,6 +21,13 @@ redis_app_cache_hit = Counter(
     ["key"],
 )
 
+# Adding cache_miss
+redis_app_cache_miss = Counter(
+    "redis_app_cache_miss",
+    "Number of cache misses when getting items from Redis",
+    ["key"],
+)
+
 request_count = Counter(
     "http_requests_total",
     "Total number of HTTP requests",
@@ -34,6 +41,21 @@ request_duration = Histogram(
     buckets=[0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0],
 )
 
+# NEW: Gauge for number of keys in Redis
+redis_keys_total = Gauge(
+    "redis_keys_total",
+    "Number of keys stored in Redis",
+)
+
+
+def update_redis_keys_gauge():
+    """Set redis_keys_total to the current number of keys (best-effort)."""
+    try:
+        keys = redis_client.keys("*")
+        redis_keys_total.set(len(keys))
+    except Exception:
+        # ignore errors so metric updating doesn't break the API
+        pass
 
 def instrument_endpoint(func):
     """Decorator to instrument endpoints with request counting and duration tracking"""
@@ -109,6 +131,8 @@ def get_item(key):
     try:
         value = redis_client.get(key)
         if value is None:
+            # Increment cache miss counter
+            redis_app_cache_miss.labels(key=key).inc()
             return jsonify({"error": "Key not found"}), 404
 
         # Increment cache hit counter
@@ -147,6 +171,12 @@ def metrics():
 
 
 if __name__ == "__main__":
+    # set initial metric value
+    try:
+        update_redis_keys_gauge()
+    except Exception:
+        pass
+    
     app.run(
         host=os.getenv("FLASK_BIND_HOST", "0.0.0.0"),
         port=int(os.getenv("FLASK_PORT", 5000)),
