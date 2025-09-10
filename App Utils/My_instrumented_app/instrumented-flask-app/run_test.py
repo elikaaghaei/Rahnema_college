@@ -57,6 +57,7 @@ class LoadTester:
         print("Add item endpoint completed")
 
     def test_get_item(self) -> None:
+        # Preload 5 known keys -> these will give us cache hits later
         for i in range(1, 6):
             try:
                 payload = {"key": f"load_test_key_{i}", "value": f"load_test_value_{i}"}
@@ -64,16 +65,28 @@ class LoadTester:
             except requests.exceptions.RequestException:
                 pass
 
+        # Loop until the test duration expires
         while time.time() - self.start_time < self.duration:
             try:
-                key_num = random.randint(1, 5)
-                requests.get(
-                    f"{self.base_url}/items/load_test_key_{key_num}", timeout=5
-                )
+                if random.random() < 0.7:
+                    # 70% chance: request one of the known keys (cache HIT)
+                    key_num = random.randint(1, 5)
+                    requests.get(
+                        f"{self.base_url}/items/load_test_key_{key_num}", timeout=5
+                    )
+                else:
+                    # 30% chance: request a random unknown key (cache MISS)
+                    random_key = f"miss_key_{random.randint(1000, 9999)}"
+                    requests.get(f"{self.base_url}/items/{random_key}", timeout=5)
+
+                # small delay so we don’t overload
                 time.sleep(0.1)
+
             except requests.exceptions.RequestException:
                 pass
+
         print("Get item endpoint completed")
+
 
     def test_list_items(self) -> None:
         while time.time() - self.start_time < self.duration:
